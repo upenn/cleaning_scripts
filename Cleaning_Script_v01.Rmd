@@ -1,0 +1,154 @@
+---
+title: "Cleaning_Script_v01"
+author: "Rita M. Ludwig"
+date: "`r Sys.Date()`"
+output: html_document
+---
+```{r housekeeping, include=FALSE, echo=FALSE}
+## Load packages
+library(tidyverse)
+library(sjlabelled)
+library(labelled)
+library(rlang)
+library(foreign)
+library(textclean)
+library(stringr)
+
+## Load data
+data = read.csv('~/P1_Baseline_Raw_2023.csv', check.names=FALSE)
+datadict = read.csv('~/P1_Baseline_Datadictionary_2023.csv')
+
+## Set path and filename to write out final dataset to
+path = "~/Cleaned"
+filename = "P1_Baseline_Cleaned_2023"
+
+```
+INPUT: 1) Raw dataset.csv 2) Data dictionary.csv
+OUTPUT: Cleaned dataset.csv
+BEHAVIOR: Pulls information from the data dictionary to a) drop nuisance and PII variables, b) rename variables, c) apply variable labels and value labels, and d) clean multiple answer option variables. The latter process produces two additional types of variables: 'multi' aggregate variables, which flag if participant selected multiple answers, and 'collapsed' variables, which aggregate all answers into one variable with categorical values. This is intended to be a 'light touch' cleaning script, and so does not make any edits to text provided by participants nor does it replace in-universe missing values (e.g. 97s,98s,99s) with N/As. 
+
+Significant portions of code adapted from https://cghlewis.com/blog/dict_clean/.
+
+```{r variable cleaning, echo=FALSE}
+## Drop variables
+#Create character vector of variables to drop for the cleaned dataset, pulled from the data dictionary
+dropped_vars = datadict %>% 
+  filter(canonical_name == "drop") %>% 
+  pull(download_name)
+#Now drop those variables
+data = data %>% select(-all_of(dropped_vars))
+
+## Rename variables
+#Create character vector of canonical variable names to use in the cleaned dataset, pulled from the data dictionary
+canonical_names = datadict %>% 
+  select(canonical_name, download_name) %>% 
+  filter(!canonical_name == "drop") %>% 
+  deframe()
+#Now rename the variables
+data = data %>% rename(all_of(canonical_names))
+str(data)
+
+## Label variables
+#Create a list of variable labels paired with canonical names to use in the cleaned dataset, pulled from the data dictionary
+var_labels = datadict %>% 
+  select(canonical_name, label) %>% 
+  filter(!canonical_name == "drop") %>% 
+  deframe() %>% 
+  as.list()
+#Now label variables. NOTE: Will throw an error if labels don't correspond to a column in the dataframe.
+data = data %>% set_variable_labels(.labels = var_labels, .strict = TRUE)
+rm(var_labels)
+
+## Convert categorical variables to the correct class. Since sjlabelled doesn't have an ordered = TRUE argument, ordinal variables have to be converted before applying their labels. Also convert non-ordered factor variables here to do it all in one step.
+#Create character vector of ordinal variables
+ordinalvars = datadict %>%
+  filter(type == "ordinal") %>%
+  pull(canonical_name)
+#Convert these variables to ordinal
+data = data %>% mutate(across(all_of(ordinalvars), ~ as.ordered(.)))
+#Create character vector of non-ordered factor variables
+factorvars = datadict %>% 
+  filter(type == "nominal" | type == "dichotomous") %>% 
+  pull(canonical_name)
+#Convert these variables to factor
+data = data %>% mutate(across(all_of(factorvars), ~ sjlabelled::as_factor(.)))
+
+## Create and apply value labels to variable values
+#Filter for all non-text entry variables and non-continuous and create value labels pulled from the data dictionary
+datadict = datadict %>%
+  mutate(value = str_split(value, ",")) %>%
+  mutate(value_labels = str_split(value_labels, ",")) %>%
+  mutate(missing_values = str_split(missing_values, ",")) %>%
+  mutate(labeled_values = ifelse(!is.na(value_labels), map2(value, value_labels, setNames), NA))
+#Create a character vector of variables to apply labels to - this will select all variables that don't have a missing value for the generated labeled_values variable, which SHOULD correspond to nominal, ordinal, multiple choice, and dichotomous variables.
+labeledvars = datadict %>% 
+  filter(!is.na(labeled_values)) %>% 
+  pull(canonical_name)
+#Now apply the labels to all non-continuous variables
+data = data %>% mutate(across(all_of(labeledvars), ~ set_labels(., labels = datadict$labeled_values[match(cur_column(), datadict$canonical_name)])))
+get_labels(data[labeledvars], values = "p")
+rm(dropped_vars, canonical_names, factorvars, ordinalvars, labeledvars)
+str(data)
+```
+Some questions on the survey are multiple choice, and exporting the data creates binary variables for each available choice. The following code creates single aggregate variables that collapse across all of these binary choice variables, using the appendix "multi" with a question descriptor (e.g. "multirace") in cases where participants selected more than one option.
+```{r multichoice variable aggregation, include=FALSE}
+## First, sum across rows of the data that are part of the same multiple choice question to create one variable that counts the number of choices selected. Do this by using the data dictionary to select only multiple choice variables, and group them together accordingly for summation by their labels.
+#Create a vector of the unique labels for multichoice variables.
+multinames = datadict %>%
+  filter(type == "multichoice" & !str_detect(canonical_name, "missing")) %>% 
+  pull(canonical_name) %>%
+  str_extract(., "^([^_]*_[^_]*[^_]*)_") %>%
+  unique(.)
+#This function will take in the vector of labels for multichoice variables and create a new variable for each that is the sum across all variables corresponding to a specific multichoice question, then recoding a value of 1 to 0 and all values greater than 1 to 1. It then uses a pivot function to create 'collapsed' versions of each multichoice variable, so that all information is available in one variable. !!NOTE!! Have to execute the function with map in order to loop over all of the names in the vector correctly and not just create multisum variables that are copies of each other. Also note that the dataframe is hard coded in this function otherwise R will throw a closure not subsettable error.
+multiaggregate = function(x) {
+  tempnames = datadict %>% 
+    filter(type == "multichoice" & str_detect(canonical_name, x) & !str_detect(canonical_name, "missing") & !str_detect(canonical_name, "entry")) %>%
+    pull(canonical_name)
+  templabel = datadict %>% 
+    filter(type == "multichoice" & str_detect(canonical_name, x)) %>%
+    pull(label) %>%
+    unique(.) %>%
+    str_to_lower(.)
+  tempdata = select(data, all_of(c("id",tempnames))) %>%
+    mutate(across(everything(), ~na_if(.,0))) %>%
+    mutate(., "{x}multi{templabel}" := rowSums(select(.,tempnames), na.rm = TRUE))
+  tempmulti = tempdata %>%
+  select(., contains("multi") & -matches("multiple")) %>%
+  colnames()
+  tempdata = tempdata %>%
+    mutate(across(all_of(tempmulti), 
+             ~ case_when(. <= 1 ~ NA, 
+                       . > 1 ~ 1))) %>%
+    mutate(across(all_of(tempmulti), ~ set_label(., label = str_to_sentence(templabel))))
+  data[tempmulti]<<-tempdata[tempmulti]
+  templonger = tempdata %>%
+    pivot_longer(
+    cols = starts_with(x),
+    names_to = templabel,
+    names_prefix = x,
+    values_to = "temp_col",
+    values_drop_na = TRUE) %>%
+  mutate(counts = across(all_of(templabel), ~ str_count(.,"multi"))) %>%
+  mutate(priority = rowSums(na.rm=TRUE, select(.,starts_with("counts")))) %>%
+  group_by(id) %>% 
+  slice_max(priority, n = 1) %>%
+  ungroup() %>%
+  select(., -starts_with("temp"), -starts_with("counts"), -priority) 
+  newname = paste(x,'collapsed', sep='')
+  colnames(templonger) = c("id", newname)
+  templonger = templonger %>% 
+  mutate(across(all_of(newname), ~ set_label(., label = str_to_sentence(templabel))))
+data <<- data %>% left_join(., templonger, by = "id")
+}
+#Run the function
+map(multinames, ~multiaggregate(.x))
+
+#Clean up
+rm(multinames)
+```
+Save cleaned data files.
+```{r save the data, include=FALSE}
+write_csv(data, file.path(path, paste0(filename,".csv")))
+write_stata(data, file.path(path, paste0(filename,".dta"), drop.na = FALSE, version = 14))
+save(data, file = file.path(path, paste0(filename,".Rdata")))
+```
