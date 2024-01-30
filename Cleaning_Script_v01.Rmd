@@ -48,17 +48,6 @@ canonical_names = datadict %>%
 data = data %>% rename(all_of(canonical_names))
 str(data)
 
-## Label variables
-#Create a list of variable labels paired with canonical names to use in the cleaned dataset, pulled from the data dictionary
-var_labels = datadict %>% 
-  select(canonical_name, label) %>% 
-  filter(!canonical_name == "drop") %>% 
-  deframe() %>% 
-  as.list()
-#Now label variables. NOTE: Will throw an error if labels don't correspond to a column in the dataframe.
-data = data %>% set_variable_labels(.labels = var_labels, .strict = TRUE)
-rm(var_labels)
-
 ## Convert categorical variables to the correct class. Since sjlabelled doesn't have an ordered = TRUE argument, ordinal variables have to be converted before applying their labels. Also convert non-ordered factor variables here to do it all in one step.
 #Create character vector of ordinal variables
 ordinalvars = datadict %>%
@@ -72,6 +61,17 @@ factorvars = datadict %>%
   pull(canonical_name)
 #Convert these variables to factor
 data = data %>% mutate(across(all_of(factorvars), ~ sjlabelled::as_factor(.)))
+
+## Label variables
+#Create a list of variable labels paired with canonical names to use in the cleaned dataset, pulled from the data dictionary
+var_labels = datadict %>% 
+  select(canonical_name, label) %>% 
+  filter(!canonical_name == "drop") %>% 
+  deframe() %>% 
+  as.list()
+#Now label variables. NOTE: Will throw an error if labels don't correspond to a column in the dataframe.
+data = data %>% set_variable_labels(.labels = var_labels, .strict = TRUE)
+rm(var_labels)
 
 ## Create and apply value labels to variable values
 #Filter for all non-text entry variables and non-continuous and create value labels pulled from the data dictionary
@@ -149,6 +149,6 @@ rm(multinames)
 Save cleaned data files.
 ```{r save the data, include=FALSE}
 write_csv(data, file.path(path, paste0(filename,".csv")))
-write_stata(data, file.path(path, paste0(filename,".dta"), drop.na = FALSE, version = 14))
+write_stata(data, file.path(path, paste0(filename,".dta")), drop.na = FALSE, version = 14)
 save(data, file = file.path(path, paste0(filename,".Rdata")))
 ```
