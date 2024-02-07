@@ -24,8 +24,8 @@ filename = "P1_Baseline_Cleaned_2023"
 
 ```
 INPUT: 1) Raw dataset.csv 2) Data dictionary.csv
-OUTPUT: Cleaned dataset.csv
-BEHAVIOR: Pulls information from the data dictionary to a) drop nuisance and PII variables, b) rename variables, c) apply variable labels and value labels, and d) clean multiple answer option variables. The latter process produces two additional types of variables: 'multi' aggregate variables, which flag if participant selected multiple answers, and 'collapsed' variables, which aggregate all answers into one variable with categorical values. This is intended to be a 'light touch' cleaning script, and so does not make any edits to text provided by participants nor does it replace in-universe missing values (e.g. 97s,98s,99s) with N/As. 
+OUTPUT: Two new collections of variables (see below for details); cleaned dataset .csv, .dta, .Rdata files.
+BEHAVIOR: Pulls information from the data dictionary to a) drop nuisance and PII variables, b) rename variables, c) apply variable labels and value labels, and d) clean multiple answer option variables. The latter process produces two additional types of variables: 'multi' aggregate variables, which flag if participant selected multiple answers, and 'collapsed' variables, which aggregate all answers into one variable with categorical values. This is intended to be a 'light touch' cleaning script, and so does NOT make any edits to text provided by participants nor does it replace in-universe missing values (e.g. 97s,98s,99s) with N/As. 
 
 Significant portions of code adapted from https://cghlewis.com/blog/dict_clean/.
 
