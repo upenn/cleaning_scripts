@@ -1,6 +1,6 @@
 ---
-title: "Numvars_Cleaning_Script_v01"
-author: "Rita M. Ludwig"
+title: "Numvars_Cleaning_Script_v01.2"
+author: "Rita M. Ludwig, Ph.D."
 date: "`r Sys.Date()`"
 output: html_document
 ---
@@ -14,9 +14,9 @@ library(sjlabelled)
 library(stringr)
 library(textclean)
 #Data
-load("/Cleaned/P1_Baseline_Cleaned_2023.Rdata")
+load("~/P1_Baseline_Cleaned_2023.Rdata")
 #Dictionary
-datadict = read.csv('/Dictionaries/P1_baseline_datadictionary_2023.csv')
+datadict = read.csv('~/P1_baseline_datadictionary_2023.csv')
 
 ## Set path and filename to write out final dataset to
 path = "~/Cleaned"
@@ -43,6 +43,10 @@ entryvars = datadict %>%
 #Create another vector of the variables expecting annual figures that aren't part of freq-amt pairs, since some people provided monthly and that needs to be converted.
 annualvars = entryvars %>%
   str_subset(., "earn|housing")
+
+## Store vector of value labels, because they will be destroyed in mutate calls and will need to be re-applied at the end.
+varlabs = data %>% var_label(.)  
+#var_label(df1) <- labs
 ```
 ```{r entry_cleaning, include=FALSE}
 ## Clean the number entry variables. Run through a standardized list of cleaning steps, including converting all of the 'cute' ways participants enter numbers. This cleaning saves the updates in-place, meaning that no new 'cleaned' variables are created in the dataset; the original values are overwritten with the cleaned ones.
@@ -120,6 +124,9 @@ freqconv = function(z) {
 }
 #Run the function
 map(freqvars, ~freqconv(.x))
+
+## Finally, apply labels back to the data
+var_label(data) = varlabs
 ```
 Save cleaned data files.
 ```{r save the data, include=FALSE}
