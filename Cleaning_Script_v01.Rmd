@@ -20,6 +20,9 @@ datadict = read.csv('~/P1_Baseline_Datadictionary_2023.csv')
 
 ## Set path and filename to write out final dataset to
 path = "~/Cleaned"
+#If number entry variables require cleaning, name the output dataset as labelled
+#filename = "P1_Baseline_Labelled_2023"
+#If no extra cleaning of number entry variables is necessary, name the output dataset as cleaned
 filename = "P1_Baseline_Cleaned_2023"
 
 ```

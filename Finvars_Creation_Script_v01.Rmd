@@ -1,0 +1,231 @@
+---
+title: "Finvars_Creation_Script_v01"
+author: "Rita M. Ludwig"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+## Load in
+#Packages
+library(tidyverse)
+library(sjlabelled)
+library(stringr)
+library(textclean)
+library(pointblank)
+library(gtsummary)
+
+#Data
+load("/Users/rludwig/Documents/Data_Science/Data_Files/Cleaned/P1_Baseline_Cleaned_Finvars_2023/P1_Baseline_Cleaned_Finvars_2023.Rdata")
+#Dictionary
+datadict = read.csv('/Users/rludwig/Documents/Data_Science/Data_Files/Dictionaries/P1_baseline_datadictionary_2023.csv')
+
+## Set path and filename to write out final dataset to
+path = "/Users/rludwig/Documents/Data_Science/Data_Files/Cleaned"
+filename = "P1_Baseline_Finvars_2023"
+```
+INPUT: 1) Cleaned_Finvars dataset 2) Data dictionary 3) Census poverty thresholds (for reference, not imported)
+OUTPUT: Two new collections of variables (see below for details); dataset .csv, .dta, .Rdata files.
+BEHAVIOR: Creates new financial variables, such as distance from the Census poverty threshold and SPM metrics.
+- aggregate_annual_income is created as the sum of all Census-approved sources of income annually.
+
+In order to conduct most analyses, we will want a continuous value for income rather than a categorical bracket selection. The following section uses imputation to impute continuous values in such cases.
+```{r imputation, include=FALSE}
+
+```
+Calculate U.S. Census poverty thresholds and scores. From the Census website:
+"The income used to compute poverty status includes (before taxes):
+- Earnings, Unemployment compensation, Workers' compensation, Social Security, Supplemental Security Income, Public assistance, Veterans' payments, Survivor benefits, Pension or retirement income, Interest, Dividends, Rents, Royalties, Income from estates, Trusts, Educational assistance, Alimony, Child support, Assistance from outside the household, Other miscellaneous sources.
+
+Money income does not include:
+Capital gains or losses, Noncash benefits (e.g. food stamps and housing subsidies), Tax credits."
+
+First, gather survey items corresponding to these benefits and report missingness rates for all in-universe participants.
+```{r data clean, echo=FALSE,  out.width = '100%'}
+## Prep the data, inspect variables for missingness
+#Clean the data to get accurate missingness counts by distinguishing "in-universe" missingness.
+finances = data %>%
+  select(., "id", "demo_household_partner", "demo_household_child", "demo_household_number", "jobs_monthsworked", contains("finances")& -contains(c("hardship", "finances_insurance_multiinsured", "_monthly"))) %>%
+  mutate(finances_retirement_annually = as.character(finances_retirement_annually)) %>%
+  mutate(finances_retirement_annually = case_when(finances_benefits_retirement == 1  
+                                              ~ finances_retirement_annually, 
+                                              TRUE ~replace_na(as.character(finances_retirement_annually), ""))) %>%
+  mutate(finances_disability_annually = as.character(finances_disability_annually)) %>%
+  mutate(finances_disability_annually = case_when(finances_benefits_disability == 1  
+                                              ~ finances_disability_annually, 
+                                              TRUE ~replace_na(as.character(finances_disability_annually), ""))) %>%
+  mutate(finances_welfare_annually = as.character(finances_welfare_annually)) %>%
+  mutate(finances_welfare_annually = case_when(finances_benefits_welfare == 1  
+                                              ~ finances_welfare_annually, 
+                                              TRUE ~replace_na(as.character(finances_welfare_annually), ""))) %>%
+  mutate(finances_unemployment_annually = as.character(finances_unemployment_annually)) %>%
+  mutate(finances_unemployment_annually = case_when(finances_benefits_unemployment == 1  
+                                              ~ finances_unemployment_annually, 
+                                              TRUE ~replace_na(as.character(finances_unemployment_annually), ""))) %>%
+  mutate(finances_workerscomp_annually = as.character(finances_workerscomp_annually)) %>%
+  mutate(finances_workerscomp_annually = case_when(finances_benefits_workerscomp == 1  
+                                              ~ finances_workerscomp_annually, 
+                                              TRUE ~replace_na(as.character(finances_workerscomp_annually), ""))) %>%
+  mutate(finances_foodstamps_annually = as.character(finances_foodstamps_annually)) %>%
+  mutate(finances_foodstamps_annually = case_when(finances_benefits_foodstamps == 1  
+                                              ~ finances_foodstamps_annually, 
+                                              TRUE ~replace_na(as.character(finances_foodstamps_annually), ""))) %>%
+  mutate(finances_support_annually = as.character(finances_support_annually)) %>%
+  mutate(finances_support_annually = case_when(finances_benefits_support == 1  
+                                              ~ finances_support_annually, 
+                                              TRUE ~replace_na(as.character(finances_support_annually), ""))) %>%
+  mutate(finances_other_annually = as.character(finances_other_annually)) %>%
+  mutate(finances_other_annually = case_when(finances_benefits_other == 1  
+                                              ~ finances_other_annually, 
+                                              TRUE ~replace_na(as.character(finances_other_annually), ""))) %>%
+  mutate(finances_earn_spouse_entry = as.character(finances_earn_spouse_entry)) %>%
+  mutate(finances_earn_spouse_entry = case_when(demo_household_partner == 1 | demo_household_partner == 2 
+                                              ~ finances_earn_spouse_entry, 
+                                              TRUE ~replace_na(as.character(finances_earn_spouse_entry), ""))) %>%
+  mutate(finances_earn_juvie_entry = as.character(finances_earn_juvie_entry)) %>%
+  mutate(finances_earn_juvie_entry = case_when(demo_household_child == 1 
+                                              ~ finances_earn_juvie_entry, 
+                                              TRUE ~replace_na(as.character(finances_earn_juvie_entry), ""))) %>%
+  mutate(finances_earn_adult_entry = as.character(finances_earn_adult_entry)) %>%
+  mutate(finances_earn_adult_entry = case_when(demo_household_child == 0 & demo_household_number >= 2 
+                                              ~ finances_earn_adult_entry, 
+                                              TRUE ~replace_na(as.character(finances_earn_adult_entry), ""))) %>%
+  mutate(across(-c(id), ~set_na(., na = datadict$missing_values[match(cur_column(), datadict$canonical_name)], as.tag = TRUE)))
+
+#Select all the variables that the Census qualifies as income wrt poverty status
+finances = finances %>%
+  select(., contains(c("annually", "earn"))) %>%
+  select(., -contains(c("bracket", "missing"))) 
+#Inspect missingness. !!NOTE!! variables need to be character type in order to get universe missingness counts
+scan_data(finances, sections = "OVM", width = 1000)
+#Create a vector of the column names of these variables to easily aggregate them for calculations
+#!!!NOTE!!! Should remove foodstamps since those aren't included in the census povery threshold calculations.
+incomevars = colnames(finances)
+```
+Next, use these items to calculate participants' total annual income, apply the appropriate Census threshold, and generate Census outcome variables.
+
+This script uses the 2023 Census poverty thresholds by size of family and number of children (https://www.census.gov/data/tables/time-series/demo/income-poverty/historical-poverty-thresholds.html).
+\newpage
+```{r missing value replacement, include=FALSE}
+## Code missing values !!NOTE!! This code will replace all values in the missing_values column with NAs. This may not be desirable for users who want to distinguish between variables not seen by participants from variables skipped or unanswered by participants.
+#Split the missing values column in order for it to be read correctly by sjlabelled::set_na
+datadict = datadict %>%
+   mutate(missing_values = str_split(missing_values, ","))
+#Create a vector of variables with missing values
+missingvars = datadict %>% 
+  filter(!is.na(missing_values)) %>%
+  pull(canonical_name)
+#Convert all missing values to NAs using sjlabelled's set_na() function, which allows use of get_na() to see which numerical values were tagged as NA directly from the data itself.
+data = data %>% 
+  mutate(across(any_of(missingvars), ~ set_na(., na = datadict$missing_values[match(cur_column(), datadict$canonical_name)], as.tag = TRUE)))
+```
+```{r census prep, echo=FALSE}
+## Calculate distance from the Census poverty threshold.
+#Create an aggregate annual income variable, and assign it NA where it is equal to zero.
+data = data %>%
+  mutate(across(all_of(incomevars), ~ as.numeric(.))) %>%
+  mutate(aggregate_annual_income = rowSums(across(all_of(incomevars)), na.rm = TRUE)) %>%
+  mutate(aggregate_annual_income = na_if(aggregate_annual_income, 0))
+##Create the Census poverty threshold variable
+#data = data %>%
+#  #Only participant in household
+#  ##USE HAS_CHILD INSTEAD
+#  mutate(census_poverty_threshold = case_when(demo_household_number == 0  & demo_age < 65
+#                                              ~ 15852, 
+#                                              demo_household_number == 0  & demo_age > 65
+#                                               ~ 14614)) %>%
+#  #1 other person in household
+#  mutate(census_poverty_threshold = case_when(demo_household_number == 1  & demo_household_child == 2 & (demo_age < 65 | hhroster1_age < #65)
+#                                              ~ 20404,
+#                                              demo_household_number == 1  & demo_household_child == 2 & (demo_age > 65 | hhroster1_age > #65)
+#                                              ~ 18418,
+#                                              demo_household_number == 1  & demo_household_child == 1 & (demo_age < 65 | hhroster1_age < #65)
+#                                              ~ 21002,
+#                                              demo_household_number == 1  & demo_household_child == 1 & (demo_age > 65 | hhroster1_age > #65)
+#                                              ~ 20923)) %>%
+#  #2 other people in household
+#  mutate(census_poverty_threshold = case_when(demo_household_number == 2  & demo_household_child == 2
+#                                              ~ 23834,
+#                                              demo_household_number == 1  & demo_household_child == 2 & (demo_age > 65 | hhroster1_age > #65)
+#                                              ~ 18418,
+#                                              demo_household_number == 1  & demo_household_child == 1 & (demo_age < 65 | hhroster1_age < #65)
+#                                              ~ 21002,
+#                                              demo_household_number == 1  & demo_household_child == 1 & (demo_age > 65 | hhroster1_age > #65)
+#                                              ~ 20923)) %>%
+```
+```{r diagnostics, echo=FALSE}
+## Check out income variables for outliers
+#Data table - all responses
+data %>%
+  select(aggregate_annual_income) %>%
+  tbl_summary(sort = everything() ~ 'frequency',
+              label = list(aggregate_annual_income ~ "Reported annual income (all responses)"),
+              statistic = list(all_continuous() ~ "{mean} ({sd})")) %>%
+  modify_caption("**Mean(SD) of reported annual income.**") %>%
+  bold_labels()
+
+#Data table - less than 4mil
+data %>%
+  select(aggregate_annual_income) %>%
+  filter(aggregate_annual_income < 4000000) %>%
+  tbl_summary(sort = everything() ~ 'frequency',
+              label = list(aggregate_annual_income ~ "Reported annual income (< 4mill annually)"),
+              statistic = list(all_continuous() ~ "{mean} ({sd})")) %>%
+  modify_caption("**Mean(SD) of reported annual income.**") %>%
+  bold_labels()
+
+#Data table - more than 4mil
+data %>%
+  select(aggregate_annual_income) %>%
+  filter(aggregate_annual_income > 4000000) %>%
+  tbl_summary(sort = everything() ~ 'frequency',
+              label = list(aggregate_annual_income ~ "Reported annual income (> 4mill annually)"),
+              statistic = list(all_continuous() ~ "{mean} ({sd})")) %>%
+  modify_caption("**Mean(SD) of reported annual income.**") %>%
+  bold_labels()
+
+#Histogram of income with all respondents
+data %>%
+  select(aggregate_annual_income) %>%
+  ggplot(., aes(x=aggregate_annual_income)) + 
+  geom_histogram() +
+  ggtitle("Distribution of aggregate annual income (all responses)") +
+    xlab("Annual income") +
+    labs(fill="") +
+    theme_bw() +
+    labs(fill="") +
+    scale_x_continuous(labels = function(x) format(x, scientific = FALSE))
+
+#Histogram just with people who report less than 4mill a year
+data %>%
+  select(aggregate_annual_income) %>%
+  filter(aggregate_annual_income < 4000000) %>%
+  ggplot(., aes(x=aggregate_annual_income)) + 
+  geom_histogram() +
+  ggtitle("Distribution of aggregate annual income (less than 4mil annually)") +
+    xlab("Annual income") +
+    labs(fill="") +
+    theme_bw() +
+    labs(fill="") +
+    scale_x_continuous(labels = function(x) format(x, scientific = FALSE))
+
+## Calculate mean and SD and use this to print out a data file of participants with bananas income levels
+#meaninc = mean(data$aggregate_annual_income, na.rm = TRUE)
+#sdinc = sd(data$aggregate_annual_income, na.rm = TRUE)
+#data %>%
+#  filter(aggregate_annual_income > 3*sdinc) %>%
+#  write_csv(., file.path("/Users/rludwig/Desktop/bigincomes.csv"))
+#
+#data %>%
+#  filter(aggregate_annual_income >4000000) %>%
+#  write_csv(., file.path("/Users/rludwig/Desktop/bigincomes.csv"))
+#
+#cutdata = data %>%
+#  filter(!id == "31156072") %>%
+#  filter(!id == "46613312")
+#cutmeaninc = mean(cutdata$aggregate_annual_income, na.rm = TRUE)
+#cutsdinc = sd(cutdata$aggregate_annual_income, na.rm = TRUE)
+
+```

@@ -20,7 +20,7 @@ datadict = read.csv('~/P1_baseline_datadictionary_2023.csv')
 
 ## Set path and filename to write out final dataset to
 path = "~/Cleaned"
-filename = "P1_Baseline_Cleaned_Numvars_2023"
+filename = "P1_Baseline_Cleaned_2023"
 ```
 INPUT: 1) Cleaned dataset.Rdata 2) Data dictionary.csv
 OUTPUT: Three new collections of variables (see below for details); cleaned dataset .csv, .dta, .Rdata files.
