@@ -118,8 +118,9 @@ freqconv = function(z) {
                                       !!sym(tempfreq) == "Monthly" ~ !!sym(tempentr)*1,
                                       !!sym(tempfreq) == "Annually" ~ !!sym(tempentr)/12
                                       ) %>% ceiling(.))
+   if(any(tempnames[tempfreq] == "Hourly")) {
    tempnames = tempnames %>% 
-    mutate(., "{z}hourly" := case_when(!!sym(tempfreq) == "Hourly" ~ !!sym(tempentr)*1))
+    mutate(., "{z}hourly" := case_when(!!sym(tempfreq) == "Hourly" ~ !!sym(tempentr)*1))}
    tempnames = tempnames %>% select(-c(tempfreq, tempentr))
    data <<- data %>% left_join(., tempnames, by = "id")
 }
