@@ -107,7 +107,8 @@ freqconv = function(z) {
                                          !!sym(tempfreq) == "Biweekly" ~ !!sym(tempentr)*26,
                                          !!sym(tempfreq) == "Bimonthly" ~ !!sym(tempentr)*24,
                                          !!sym(tempfreq) == "Monthly" ~ !!sym(tempentr)*12,
-                                         !!sym(tempfreq) == "Annually" ~ !!sym(tempentr)*1
+                                         !!sym(tempfreq) == "Annually" ~ !!sym(tempentr)*1,
+                                         !!sym(tempfreq) == "No Frequency" ~ !!sym(tempentr)*1
                                          ))
    tempnames = tempnames %>% 
     mutate(., "{z}monthly" := case_when(!!sym(tempfreq) == "Daily" ~ !!sym(tempentr)*30.437,
