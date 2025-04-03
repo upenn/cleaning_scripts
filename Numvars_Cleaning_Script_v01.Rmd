@@ -14,7 +14,7 @@ library(sjlabelled)
 library(stringr)
 library(textclean)
 #Data
-load("~/P1_Baseline_Cleaned_2023.Rdata")
+load("~/Cleaned/P1_Baseline_Labelled_2023.Rdata")
 #Dictionary
 datadict = read.csv('~/P1_baseline_datadictionary_2023.csv')
 
@@ -118,10 +118,10 @@ freqconv = function(z) {
                                       !!sym(tempfreq) == "Monthly" ~ !!sym(tempentr)*1,
                                       !!sym(tempfreq) == "Annually" ~ !!sym(tempentr)/12
                                       ) %>% ceiling(.))
-   if(any(tempnames[tempfreq] == "Hourly")) {
-   tempnames = tempnames %>% 
-    mutate(., "{z}hourly" := case_when(!!sym(tempfreq) == "Hourly" ~ !!sym(tempentr)*1))}
-   tempnames = tempnames %>% select(-c(tempfreq, tempentr))
+   tempnames = tempnames %>%
+     mutate(., "{z}hourly" := case_when(!!sym(tempfreq) == "Hourly" ~ !!sym(tempentr)*1))
+   tempnames = tempnames %>% select(-c(tempfreq, tempentr)) %>%
+     select_if(function(x) !all(is.na(x)))
    data <<- data %>% left_join(., tempnames, by = "id")
 }
 #Run the function
